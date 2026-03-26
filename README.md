@@ -7,10 +7,6 @@
 ![Docker](https://img.shields.io/badge/Deploy-Docker-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## 🚀 Live Demo
-
-👉 Try it here: `https://your-deployed-app-link.com`
-
 
 ## 🎯 What is DataSense AI?
 
