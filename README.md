@@ -236,15 +236,17 @@ The core of DataSense AI is a team of specialized agents, orchestrated by LangGr
 ├── agents/
 ├── api/
 ├── assets/
+├── data/
 ├── docker/
 ├── evaluation/
 ├── execution/
 ├── pipelines/
-├── sample_datasets/
 ├── static/
 ├── templates/
+├── utils/
 ├── app.py
 ├── config.py
+├── extensions.py
 ├── README.md
 └── requirements.txt
 ```
