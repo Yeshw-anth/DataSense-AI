@@ -1,0 +1,26 @@
+# Ignore Python virtual environments
+.venv1/
+venv/
+*.venv
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore testing and CI/CD artifacts
+.pytest_cache/
+.tox/
+.travis.yml
+.github/
+
+# Ignore IDE and editor directories
+.vscode/
+.idea/
+
+# Ignore local environment files
+.env
+
+# Ignore Git directory
+.git/

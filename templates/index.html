@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversational AI Data Analyst</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Left Column: Controls & Results -->
+        <div class="controls-container">
+            <h2>Analysis Controls</h2>
+
+            <div class="form-group">
+                <label for="file-upload">1. Upload your data file (CSV or Excel):</label>
+                <input type="file" id="file-upload" name="file" accept=".csv,.xls,.xlsx">
+            </div>
+
+            <div class="form-group">
+                <label for="llm-provider">2. Choose your AI model provider:</label>
+                <select id="llm-provider" name="llm_provider">
+                    <option value="google">Google</option>
+                    <option value="cohere">Cohere</option>
+                    <option value="ollama">Ollama</option>
+                </select>
+            </div>
+
+            <div id="model-selection-container" class="form-group hidden">
+                <label for="model-name">Select a model:</label>
+                <select id="model-name" name="model_name"></select>
+            </div>
+
+            <div id="api-key-fields" class="api-key-fields">
+                <div id="google-api-key-container" class="form-group">
+                    <label for="google-api-key">Enter your Google API Key:</label>
+                    <input type="password" id="google-api-key" name="google_api_key" placeholder="Enter Google API Key">
+                </div>
+                <div id="cohere-api-key-container" class="form-group hidden">
+                    <label for="cohere-api-key">Enter your Cohere API Key:</label>
+                    <input type="password" id="cohere-api-key" name="cohere_api_key" placeholder="Enter Cohere API Key">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="query">3. Ask a question about your data:</label>
+                <textarea id="query" name="query" placeholder="e.g., 'What are the total sales per region?'" disabled></textarea>
+            </div>
+
+            <button id="send-btn" class="btn" disabled>Send</button>
+
+            <div id="loader" class="loader hidden"></div>
+            <div id="error" class="hidden"></div>
+
+            <div id="results-section" class="hidden">
+                <h2>Latest Analysis</h2>
+                <div id="summary"></div>
+                <div id="visualization"></div>
+            </div>
+        </div>
+
+        <!-- Right Column: Chat History -->
+        <div class="chat-container">
+            <div class="chat-header">Conversation</div>
+            <div class="chat-history" id="chat-history"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- Element References ---
+            const fileInput = document.getElementById('file-upload');
+            const queryInput = document.getElementById('query');
+            const sendBtn = document.getElementById('send-btn');
+            const chatHistory = document.getElementById('chat-history');
+            const loader = document.getElementById('loader');
+            const errorContainer = document.getElementById('error');
+            const resultsSection = document.getElementById('results-section');
+            const summaryContainer = document.getElementById('summary');
+            const vizContainer = document.getElementById('visualization');
+            const llmProvider = document.getElementById('llm-provider');
+            const googleApiContainer = document.getElementById('google-api-key-container');
+            const cohereApiContainer = document.getElementById('cohere-api-key-container');
+            const modelSelectionContainer = document.getElementById('model-selection-container');
+            const modelNameSelect = document.getElementById('model-name');
+
+            let conversationHistory = [];
+            let currentFilepath = null;
+            let currentTableName = null;
+
+            const modelMapping = {
+                google: ['gemini-3.1-flash-lite-preview'],
+                cohere: ['command-a-03-2025'],
+                ollama: ['gemma3:1b','gemma:2b', 'llama3']
+            };
+
+            // Initialize the provider and model dropdowns on page load
+            handleProviderChange();
+            llmProvider.addEventListener('change', handleProviderChange);
+            fileInput.addEventListener('change', handleFileUpload);
+            sendBtn.addEventListener('click', handleSendQuery);
+
+            // Initialize the provider and model dropdowns on page load
+            handleProviderChange();
+            function handleProviderChange() {
+                const provider = llmProvider.value;
+                googleApiContainer.classList.toggle('hidden', provider !== 'google');
+                cohereApiContainer.classList.toggle('hidden', provider !== 'cohere');
+
+                if (provider === 'ollama') {
+                    modelSelectionContainer.classList.remove('hidden');
+                    populateModelDropdown(provider);
+                } else {
+                    modelSelectionContainer.classList.add('hidden');
+                }
+            }
+
+            function populateModelDropdown(provider) {
+                const models = modelMapping[provider] || [];
+                modelNameSelect.innerHTML = ''; // Clear existing options
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelNameSelect.appendChild(option);
+                });
+            }
+
+            async function handleFileUpload() {
+                const file = fileInput.files[0];
+                if (!file) return;
+
+                setLoading(true, 'Uploading and processing file...');
+                const formData = new FormData();
+                formData.append('file', file);
+                if (currentFilepath) {
+                    formData.append('previous_filepath', currentFilepath);
+                }
+
+                try {
+                    const response = await fetch('/api/upload', { method: 'POST', body: formData });
+                    const data = await response.json();
+
+                    if (!response.ok) throw new Error(data.error || 'File upload failed');
+
+                    currentFilepath = data.filepath;
+                    currentTableName = data.table_name;
+                    conversationHistory = []; // Reset history for new file
+
+                    // Enable query input and send button
+                    queryInput.disabled = false;
+                    sendBtn.disabled = false;
+
+                    // Update UI
+                    chatHistory.innerHTML = ''; // Clear chat
+                    addMessageToHistory('bot', `File \"${file.name}\" uploaded successfully. The data has the following columns: ${data.columns.join(', ')}. You can now ask questions about it.`);
+                    resultsSection.classList.add('hidden');
+
+                } catch (err) {
+                    showError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            }
+
+            async function handleSendQuery() {
+                const query = queryInput.value.trim();
+                if (!query || !currentFilepath) return;
+
+                setLoading(true, 'Analyzing your query...');
+                addMessageToHistory('user', query);
+                queryInput.value = '';
+
+                const provider = llmProvider.value;
+                let model_name;
+
+                if (provider === 'ollama') {
+                    model_name = modelNameSelect.value;
+                } else {
+                    model_name = modelMapping[provider][0];
+                }
+
+                try {
+                    const response = await fetch('/api/query', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            query: query,
+                            filepath: currentFilepath,
+                            table_name: currentTableName,
+                            history: conversationHistory,
+                            llm_provider: provider,
+                            model_name: model_name,
+                            google_api_key: document.getElementById('google-api-key').value,
+                            cohere_api_key: document.getElementById('cohere-api-key').value
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) {
+                        if (response.status === 401) {
+                            throw new Error(data.error || 'API Key is invalid or has expired. Please check your key and try again.');
+                        } else {
+                            throw new Error(data.error || 'Analysis failed');
+                        }
+                    }
+
+                    // Add AI response to history and display results
+                    const botResponse = data.summary || (data.visualization ? 'Here is the generated visualization.' : (data.table ? 'Here is the generated table.' : 'Analysis complete.'));
+                    addMessageToHistory('bot', botResponse, data.visualization, data.table);
+                    displayLatestResults(data.summary, data.visualization, data.table);
+
+                    // Update conversation history for next turn
+                    conversationHistory.push({ "role": "user", "content": query });
+                    conversationHistory.push({ "role": "assistant", "content": botResponse });
+
+                } catch (err) {
+                    showError(err.message);
+                    addMessageToHistory('bot', `Sorry, an error occurred: ${err.message}`);
+                } finally {
+                    setLoading(false);
+                }
+            }
+
+            function addMessageToHistory(sender, text, visualization = null, table = null) {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('chat-message', `${sender}-message`);
+
+                if (sender === 'user') {
+                    messageElement.textContent = text;
+                } else { // sender === 'bot'
+                    let botContent = marked.parse(text || '');
+
+                    if (visualization) {
+                        botContent += `<img src="${visualization}" alt="Generated Chart">`;
+                    }
+                    if (table) {
+                        botContent += createHtmlTable(table);
+                    }
+                    messageElement.innerHTML = botContent;
+                }
+
+                chatHistory.appendChild(messageElement);
+                chatHistory.scrollTop = chatHistory.scrollHeight; // Auto-scroll
+            }
+
+            function displayLatestResults(summary, visualization, table) {
+                summaryContainer.innerHTML = `<h3>Answer</h3>${marked.parse(summary || '<p>No summary was generated.</p>')}`;
+
+                let vizContent = '<h3>Visualization</h3>';
+                if (visualization) {
+                    vizContent += `<img src="${visualization}" alt="Generated Chart">`;
+                } else if (table) {
+                    vizContent += createHtmlTable(table);
+                } else {
+                    vizContent += '<p>No visualization was generated.</p>';
+                }
+                vizContainer.innerHTML = vizContent;
+                resultsSection.classList.remove('hidden');
+            }
+
+            function createHtmlTable(tableData) {
+                if (!tableData || !tableData.columns || !tableData.data) return '';
+                let tableHtml = '<table class="data-table"><thead><tr>';
+                tableData.columns.forEach(col => tableHtml += `<th>${col}</th>`);
+                tableHtml += '</tr></thead><tbody>';
+                tableData.data.forEach(row => {
+                    tableHtml += '<tr>';
+                    row.forEach(cell => tableHtml += `<td>${cell}</td>`);
+                    tableHtml += '</tr>';
+                });
+                tableHtml += '</tbody></table>';
+                return tableHtml;
+            }
+
+            function setLoading(isLoading, message = '') {
+                loader.classList.toggle('hidden', !isLoading);
+                queryInput.disabled = isLoading;
+                sendBtn.disabled = isLoading;
+            }
+
+            function showError(message) {
+                errorContainer.textContent = `Error: ${message}`;
+                errorContainer.classList.remove('hidden');
+                setTimeout(() => errorContainer.classList.add('hidden'), 5000);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+{# This template renders a single AI response in the chat history. #}
+<div class="mb-4">
+    <!-- User's Message -->
+    <div class="flex justify-end">
+        <div class="bg-blue-500 text-white p-3 rounded-lg max-w-lg">
+            <p>{{ result.query }}</p>
+        </div>
+    </div>
+
+    <!-- AI's Response -->
+    <div class="flex justify-start mt-2">
+        <div class="bg-gray-200 p-3 rounded-lg max-w-lg">
+            {% if result.error %}
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg" role="alert">
+                    <strong class="font-bold">An Error Occurred!</strong>
+                    <span class="block sm:inline">{{ result.error }}</span>
+                </div>
+            {% else %}
+                <h4 class="font-semibold mb-2">Here's the analysis:</h4>
+                <div class="mb-2">
+                    <h5 class="font-medium">The Plan:</h5>
+                    <ul class="list-disc list-inside text-sm">
+                        {% for step in result.plan %}
+                            <li>{{ step }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="mb-2">
+                    <h5 class="font-medium">Suggested Chart Type:</h5>
+                    <p class="text-sm">{{ result.chart_type }}</p>
+                </div>
+                <div class="mb-2">
+                    <h5 class="font-medium">The SQL Query:</h5>
+                    <pre class="bg-gray-800 text-white p-2 rounded text-sm"><code>{{ result.sql_query }}</code></pre>
+                </div>
+
+                {% if result.execution_result and result.execution_result.result %}
+                    <div class="mb-2">
+                        <h5 class="font-medium">The Result:</h5>
+                        <table class="min-w-full bg-white border border-gray-300 text-sm">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    {% for key in result.execution_result.result[0].keys() %}
+                                        <th class="py-2 px-4 border-b">{{ key }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in result.execution_result.result %}
+                                    <tr>
+                                        {% for value in row.values() %}
+                                            <td class="py-2 px-4 border-b">{{ value }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+
+                {% if result.summary %}
+                    <div class="mb-2">
+                        <h5 class="font-medium">The Answer:</h5>
+                        <p>{{ result.summary }}</p>
+                    </div>
+                {% endif %}
+
+                {% if result.visualization and result.visualization.visualization_path %}
+                    <div class="mt-2">
+                        <h5 class="font-medium">The Visualization:</h5>
+                        <img src="{{ url_for('static', filename=result.visualization.visualization_path) }}" alt="Data Visualization" class="rounded-lg shadow-md mt-1">
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Hidden history data for the next request -->
+    <div class="history-data" style="display: none;">{{ history | tojson }}</div>
+</div>
