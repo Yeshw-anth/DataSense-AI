@@ -49,7 +49,7 @@ The architecture and agent workflow reflect real-world AI system design patterns
 ## 🎥 Demo & Screenshots
 
 
-![Demo GIF](assets/Video Project.gif)
+![Demo GIF](assets/Video_Project.gif)
 
 **Upload & Query Interface**
 ![Screenshot of Upload](assets/capture.png)
